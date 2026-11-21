@@ -266,8 +266,8 @@ http
     console.log(`Health check server listening on port ${PORT}`);
   });
 
-// Run immediately on startup, then check every 60 seconds
+// Run immediately on startup, then check every 5 minutes
 run().catch((err) => console.error("Error on initial run:", err));
 setInterval(() => {
   run().catch((err) => console.error("Error during check:", err));
-}, 60 * 1000);
+}, 5 * 60 * 1000);
