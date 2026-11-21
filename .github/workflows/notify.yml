@@ -2,7 +2,7 @@ name: SSO Championship Notifier
 
 on:
   schedule:
-    - cron: "15,20,25,45,50,55 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -16,6 +16,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Restore sent history cache
+        uses: actions/cache@v4
+        with:
+          path: sent_history.json
+          key: sso-champ-history-${{ github.run_id }}
+          restore-keys: |
+            sso-champ-history-
 
       - name: Run notifier
         env:
