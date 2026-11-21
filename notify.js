@@ -3,7 +3,7 @@ const fs = require("fs");
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const SERVER_TIMEZONE = "Europe/Stockholm";
 const WARN_MINUTES_BEFORE = 10;
-const FORCE_TEST = false;
+const FORCE_TEST = true;
 const SCHEDULE = JSON.parse(fs.readFileSync("./schedule.json", "utf8"));
 
 function getZonedParts(date, timeZone) {
@@ -25,6 +25,20 @@ function getZonedParts(date, timeZone) {
   return { dayName, timeStr: `${hour}:${minute}` };
 }
 
+function findMatchingChamp(dayName, lookupTime) {
+  const daySchedule =
+    SCHEDULE?.[dayName] ||
+    SCHEDULE?.[dayName.toLowerCase()] ||
+    SCHEDULE?.[dayName.toUpperCase()];
+
+  if (!daySchedule) return null;
+
+  if (daySchedule[lookupTime]) return daySchedule[lookupTime];
+
+  const unpadded = lookupTime.replace(/^0/, "");
+  return daySchedule[unpadded] || null;
+}
+
 async function run() {
   if (!WEBHOOK_URL) {
     console.error("Missing DISCORD_WEBHOOK_URL secret.");
@@ -37,37 +51,39 @@ async function run() {
 
   const [hour, minStr] = timeStr.split(":");
   const min = Number(minStr);
-  let snappedMin = null;
-  if (min >= 55 || min <= 5) snappedMin = "00";
-  if (min >= 25 && min <= 35) snappedMin = "30";
 
-  if (!snappedMin) {
-    console.log(`Not a championship slot (${dayName} ${timeStr}). Skipping.`);
-    return;
+  let snappedMin = null;
+  if (min >= 50 || min <= 10) snappedMin = "00";
+  else if (min >= 20 && min <= 40) snappedMin = "30";
+
+  let lookupTime = snappedMin ? `${hour}:${snappedMin}` : null;
+  let champLocation = lookupTime ? findMatchingChamp(dayName, lookupTime) : null;
+
+  if (FORCE_TEST && !champLocation) {
+    lookupTime = lookupTime || `${hour}:00`;
+    champLocation = "Test Arena";
+    console.log("FORCE_TEST enabled: sending test notification.");
   }
 
-  const lookupTime = `${hour}:${snappedMin}`;
-  const champLocation = SCHEDULE?.[dayName]?.[lookupTime];
-  if (!champLocation) return;
+  if (!champLocation) {
+    console.log(
+      `No championship found for ${dayName} target ${timeStr} (snapped: ${lookupTime || "none"}). Skipping.`
+    );
+    return;
+  }
 
   const res = await fetch(WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      body: JSON.stringify({
-  content: "<@&1573660467732152361>",
-  embeds: [
-    {
-      title: "🏆 Upcoming Star Stable Championship!",
-      description: `**${champLocation} Championship** starts in 10 minutes (\`${lookupTime}\` server time)!`,
-      color: 16766720,
-    },
-  ],
-}),
+      content: "<@&1573660467732152361>",
+      allowed_mentions: {
+        roles: ["1573660467732152361"],
+      },
       embeds: [
         {
           title: "🏆 Upcoming Star Stable Championship!",
-          description: `**${champLocation} Championship** starts soon (\`${lookupTime}\` server time)!`,
+          description: `**${champLocation} Championship** starts in 10 minutes (\`${lookupTime}\` server time)!`,
           color: 16766720,
         },
       ],
@@ -77,6 +93,8 @@ async function run() {
   if (!res.ok) {
     throw new Error(`Discord Webhook failed: ${res.status} ${await res.text()}`);
   }
+
+  console.log(`Sent notification for ${champLocation} at ${lookupTime} (${dayName}).`);
 }
 
 run();
