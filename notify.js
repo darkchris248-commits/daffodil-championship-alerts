@@ -1,4 +1,5 @@
 const fs = require("fs");
+const http = require("http");
 
 const RAW_WEBHOOK_CONFIG = process.env.DISCORD_WEBHOOK_URL;
 const SERVER_TIMEZONE = "Europe/Stockholm";
@@ -6,6 +7,9 @@ const WARN_THRESHOLDS = [15, 10, 5]; // Minutes before championship to notify
 const HISTORY_FILE = "./sent_history.json";
 const FORCE_TEST = false;
 const SCHEDULE = JSON.parse(fs.readFileSync("./schedule.json", "utf8"));
+
+// Keep history in memory so Render restarts/ephemeral disk don't cause issues
+const memoryHistory = new Set();
 
 function parseTargets(raw) {
   if (!raw) return [];
@@ -31,7 +35,11 @@ function loadHistory() {
 function saveHistory(history) {
   // Keep only the last 50 entries so the file stays tiny
   const entries = Object.entries(history).slice(-50);
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(Object.fromEntries(entries), null, 2));
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(Object.fromEntries(entries), null, 2));
+  } catch (err) {
+    console.warn("Could not write sent_history.json:", err.message);
+  }
 }
 
 function getZonedParts(date, timeZone) {
@@ -108,7 +116,7 @@ function findNextChampAfter(baseDate, currentDayName, currentLookupTime) {
   return null;
 }
 
-// Finds if a championship is starting in 15, 10, or 5 minutes (with +-2 min tolerance for cron jitter)
+// Finds if a championship is starting in 15, 10, or 5 minutes (with +-2 min tolerance)
 function findActiveAlert(now) {
   for (const warnMins of WARN_THRESHOLDS) {
     const targetTime = new Date(now.getTime() + warnMins * 60 * 1000);
@@ -150,8 +158,8 @@ function findActiveAlert(now) {
 async function run() {
   const targets = parseTargets(RAW_WEBHOOK_CONFIG);
   if (targets.length === 0) {
-    console.error("Missing DISCORD_WEBHOOK_URL secret.");
-    process.exit(1);
+    console.error("Missing DISCORD_WEBHOOK_URL environment variable.");
+    return;
   }
 
   const now = new Date();
@@ -180,7 +188,7 @@ async function run() {
   const history = loadHistory();
   const dedupeKey = `${alert.dateKey}_${alert.lookupTime}_${alert.warnMins}m`;
 
-  if (!FORCE_TEST && history[dedupeKey]) {
+  if (!FORCE_TEST && (memoryHistory.has(dedupeKey) || history[dedupeKey])) {
     console.log(`Already sent ${dedupeKey} (${alert.champLocation}). Skipping duplicate.`);
     return;
   }
@@ -197,7 +205,7 @@ async function run() {
     });
   }
 
-  let failedCount = 0;
+  let sentCount = 0;
 
   for (let i = 0; i < targets.length; i++) {
     const { url, roleId } = targets[i];
@@ -224,25 +232,42 @@ async function run() {
     });
 
     if (!res.ok) {
-      failedCount++;
       console.error(
         `Server #${i + 1} webhook failed: ${res.status} ${await res.text()}`
       );
     } else {
+      sentCount++;
       console.log(
         `Server #${i + 1}: sent ${alert.warnMins}-min alert for ${alert.champLocation} (${alert.lookupTime}).`
       );
     }
   }
 
-  if (failedCount > 0) {
-    process.exit(1);
-  }
+  if (sentCount > 0 && !FORCE_TEST) {
+    memoryHistory.add(dedupeKey);
+    if (memoryHistory.size > 100) {
+      const oldest = memoryHistory.values().next().value;
+      memoryHistory.delete(oldest);
+    }
 
-  if (!FORCE_TEST) {
     history[dedupeKey] = new Date().toISOString();
     saveHistory(history);
   }
 }
 
-run();
+// Tiny web server so Render Web Service stays alive & UptimeRobot can ping it
+const PORT = process.env.PORT || 3000;
+http
+  .createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("SSO Championship Notifier is active!\n");
+  })
+  .listen(PORT, () => {
+    console.log(`Health check server listening on port ${PORT}`);
+  });
+
+// Run immediately on startup, then check every 60 seconds
+run().catch((err) => console.error("Error on initial run:", err));
+setInterval(() => {
+  run().catch((err) => console.error("Error during check:", err));
+}, 60 * 1000);
