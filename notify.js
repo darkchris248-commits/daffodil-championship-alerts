@@ -54,6 +54,16 @@ async function run() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      body: JSON.stringify({
+  content: "<@&1573660467732152361>",
+  embeds: [
+    {
+      title: "🏆 Upcoming Star Stable Championship!",
+      description: `**${champLocation} Championship** starts in 10 minutes (\`${lookupTime}\` server time)!`,
+      color: 16766720,
+    },
+  ],
+}),
       embeds: [
         {
           title: "🏆 Upcoming Star Stable Championship!",
