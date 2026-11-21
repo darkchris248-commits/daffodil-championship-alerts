@@ -233,7 +233,7 @@ async function run() {
 
     if (!res.ok) {
       console.error(
-        `Server #${i + 1} webhook failed: ${res.status} ${await res.text()}`
+        `Server #${i + 1} webhook failed with HTTP ${res.status} (${res.statusText || "Error"}).`
       );
     } else {
       sentCount++;
