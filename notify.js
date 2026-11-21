@@ -2,7 +2,7 @@ const fs = require("fs");
 
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const SERVER_TIMEZONE = "Europe/Stockholm";
-const WARN_MINUTES_BEFORE = 5;
+const WARN_MINUTES_BEFORE = 10;
 
 const SCHEDULE = JSON.parse(fs.readFileSync("./schedule.json", "utf8"));
 
