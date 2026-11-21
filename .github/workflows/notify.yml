@@ -2,7 +2,7 @@ name: SSO Championship Notifier
 
 on:
   schedule:
-   - cron: "20,50 * * * *"
+    - cron: "15,20,25,45,50,55 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,10 +11,12 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+
       - name: Run notifier
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
