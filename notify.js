@@ -6,10 +6,13 @@ const SERVER_TIMEZONE = "Europe/Stockholm";
 const WARN_THRESHOLDS = [10]; // Only notify 10 minutes before championship
 const HISTORY_FILE = "./sent_history.json";
 const FORCE_TEST = false;
+const MAX_WEBHOOK_RETRIES = 3;
 const SCHEDULE = JSON.parse(fs.readFileSync("./schedule.json", "utf8"));
 
 // Keep history in memory so Render restarts/ephemeral disk don't cause issues
 const memoryHistory = new Set();
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function parseTargets(raw) {
   if (!raw) return [];
@@ -143,6 +146,56 @@ function findActiveAlert(now) {
   return null;
 }
 
+async function sendWebhookWithRetry(url, payload, serverLabel, maxRetries = MAX_WEBHOOK_RETRIES) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      return res;
+    }
+
+    if (res.status === 429) {
+      let retryAfterSec = 1;
+      try {
+        const data = await res.json();
+        if (typeof data.retry_after === "number" && data.retry_after > 0) {
+          retryAfterSec = data.retry_after;
+        }
+      } catch {
+        const headerVal = Number(res.headers.get("retry-after"));
+        if (!Number.isNaN(headerVal) && headerVal > 0) {
+          retryAfterSec = headerVal;
+        }
+      }
+
+      if (attempt === maxRetries) {
+        console.error(
+          `${serverLabel} webhook failed with HTTP 429 (Too Many Requests) after ${maxRetries} retries.`
+        );
+        return null;
+      }
+
+      const waitMs = Math.ceil(retryAfterSec * 1000) + 150;
+      console.warn(
+        `${serverLabel} rate limited (HTTP 429). Waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}...`
+      );
+      await sleep(waitMs);
+      continue;
+    }
+
+    console.error(
+      `${serverLabel} webhook failed with HTTP ${res.status} (${res.statusText || "Error"}).`
+    );
+    return null;
+  }
+
+  return null;
+}
+
 async function run() {
   const targets = parseTargets(RAW_WEBHOOK_CONFIG);
   if (targets.length === 0) {
@@ -197,6 +250,7 @@ async function run() {
 
   for (let i = 0; i < targets.length; i++) {
     const { url, roleId } = targets[i];
+    const serverLabel = `Server #${i + 1}`;
     const payload = {
       embeds: [
         {
@@ -213,20 +267,12 @@ async function run() {
       payload.allowed_mentions = { roles: [String(roleId)] };
     }
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const res = await sendWebhookWithRetry(url, payload, serverLabel);
 
-    if (!res.ok) {
-      console.error(
-        `Server #${i + 1} webhook failed with HTTP ${res.status} (${res.statusText || "Error"}).`
-      );
-    } else {
+    if (res) {
       sentCount++;
       console.log(
-        `Server #${i + 1}: sent ${alert.warnMins}-min alert for ${alert.champLocation} (${alert.lookupTime}).`
+        `${serverLabel}: sent ${alert.warnMins}-min alert for ${alert.champLocation} (${alert.lookupTime}).`
       );
     }
   }
