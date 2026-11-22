@@ -7,6 +7,7 @@ const WARN_THRESHOLDS = [10]; // Only notify 10 minutes before championship
 const HISTORY_FILE = "./sent_history.json";
 const FORCE_TEST = false;
 const MAX_WEBHOOK_RETRIES = 3;
+const MAX_RETRY_DELAY_MS = 5000; // Cap retry wait so huge retry_after values don't stall alerts
 const SCHEDULE = JSON.parse(fs.readFileSync("./schedule.json", "utf8"));
 
 // Keep history in memory so Render restarts/ephemeral disk don't cause issues
@@ -179,9 +180,10 @@ async function sendWebhookWithRetry(url, payload, serverLabel, maxRetries = MAX_
         return null;
       }
 
-      const waitMs = Math.ceil(retryAfterSec * 1000) + 150;
+      const rawWaitMs = Math.ceil(retryAfterSec * 1000) + 150;
+      const waitMs = Math.min(rawWaitMs, MAX_RETRY_DELAY_MS);
       console.warn(
-        `${serverLabel} rate limited (HTTP 429). Waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}...`
+        `${serverLabel} rate limited (HTTP 429; retry_after=${retryAfterSec}s). Waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}...`
       );
       await sleep(waitMs);
       continue;
