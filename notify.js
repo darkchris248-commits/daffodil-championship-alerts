@@ -116,7 +116,7 @@ function findNextChampAfter(baseDate, currentDayName, currentLookupTime) {
   return null;
 }
 
-// Finds if a championship is starting in 10 minutes (with +-1 min tolerance)
+// Only trigger when now + 10 minutes lands right on :00 or :30
 function findActiveAlert(now) {
   for (const warnMins of WARN_THRESHOLDS) {
     const targetTime = new Date(now.getTime() + warnMins * 60 * 1000);
@@ -124,30 +124,18 @@ function findActiveAlert(now) {
     const [hour, minStr] = timeStr.split(":");
     const min = Number(minStr);
 
-    let snappedMin = null;
-    if (min >= 59 || min <= 1) snappedMin = "00";
-    else if (min >= 29 && min <= 31) snappedMin = "30";
+    if (min !== 0 && min !== 30) continue;
 
-    if (!snappedMin) continue;
-
-    // Handle 59 rolling into the next hour's :00
-    let slotDate = targetTime;
-    if (min >= 59) {
-      slotDate = new Date(targetTime.getTime() + (60 - min) * 60 * 1000);
-    }
-    const slotParts = getZonedParts(slotDate, SERVER_TIMEZONE);
-    const slotHour = slotParts.timeStr.split(":")[0];
-    const lookupTime = `${slotHour}:${snappedMin}`;
-
-    const champLocation = findMatchingChamp(slotParts.dayName, lookupTime);
+    const lookupTime = `${hour}:${minStr}`;
+    const champLocation = findMatchingChamp(dayName, lookupTime);
     if (champLocation) {
       return {
         warnMins,
         champLocation,
         lookupTime,
-        dayName: slotParts.dayName,
-        dateKey: slotParts.dateKey,
-        slotDate,
+        dayName,
+        dateKey,
+        slotDate: targetTime,
       };
     }
   }
