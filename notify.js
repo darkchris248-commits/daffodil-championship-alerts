@@ -3,7 +3,7 @@ const http = require("http");
 
 const RAW_WEBHOOK_CONFIG = process.env.DISCORD_WEBHOOK_URL;
 const SERVER_TIMEZONE = "Europe/Stockholm";
-const WARN_THRESHOLDS = [15, 10, 5]; // Minutes before championship to notify
+const WARN_THRESHOLDS = [10]; // Only notify 10 minutes before championship
 const HISTORY_FILE = "./sent_history.json";
 const FORCE_TEST = false;
 const SCHEDULE = JSON.parse(fs.readFileSync("./schedule.json", "utf8"));
@@ -116,7 +116,7 @@ function findNextChampAfter(baseDate, currentDayName, currentLookupTime) {
   return null;
 }
 
-// Finds if a championship is starting in 15, 10, or 5 minutes (with +-2 min tolerance)
+// Finds if a championship is starting in 10 minutes (with +-1 min tolerance)
 function findActiveAlert(now) {
   for (const warnMins of WARN_THRESHOLDS) {
     const targetTime = new Date(now.getTime() + warnMins * 60 * 1000);
@@ -125,14 +125,14 @@ function findActiveAlert(now) {
     const min = Number(minStr);
 
     let snappedMin = null;
-    if (min >= 58 || min <= 2) snappedMin = "00";
-    else if (min >= 28 && min <= 32) snappedMin = "30";
+    if (min >= 59 || min <= 1) snappedMin = "00";
+    else if (min >= 29 && min <= 31) snappedMin = "30";
 
     if (!snappedMin) continue;
 
-    // Handle 58-59 rolling into the next hour's :00
+    // Handle 59 rolling into the next hour's :00
     let slotDate = targetTime;
-    if (min >= 58) {
+    if (min >= 59) {
       slotDate = new Date(targetTime.getTime() + (60 - min) * 60 * 1000);
     }
     const slotParts = getZonedParts(slotDate, SERVER_TIMEZONE);
@@ -169,7 +169,7 @@ async function run() {
     const { dayName, dateKey, timeStr } = getZonedParts(now, SERVER_TIMEZONE);
     const hour = timeStr.split(":")[0];
     alert = {
-      warnMins: 15,
+      warnMins: 10,
       champLocation: "Test Arena",
       lookupTime: `${hour}:00`,
       dayName,
@@ -181,7 +181,7 @@ async function run() {
 
   if (!alert) {
     const { dayName, timeStr } = getZonedParts(now, SERVER_TIMEZONE);
-    console.log(`No 15/10/5-minute championship alert due at ${dayName} ${timeStr}. Skipping.`);
+    console.log(`No 10-minute championship alert due at ${dayName} ${timeStr}. Skipping.`);
     return;
   }
 
@@ -266,8 +266,8 @@ http
     console.log(`Health check server listening on port ${PORT}`);
   });
 
-// Run immediately on startup, then check every 5 minutes
+// Run immediately on startup, then check every 1 minute for exact 10-minute alerts
 run().catch((err) => console.error("Error on initial run:", err));
 setInterval(() => {
   run().catch((err) => console.error("Error during check:", err));
-}, 5 * 60 * 1000);
+}, 1 * 60 * 1000);
