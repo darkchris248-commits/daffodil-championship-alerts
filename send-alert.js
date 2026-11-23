@@ -2,7 +2,7 @@ const fs = require("fs");
 
 const RAW_WEBHOOK_CONFIG = process.env.DISCORD_WEBHOOK_URL;
 const SERVER_TIMEZONE = "Europe/Stockholm";
-const LOOKAHEAD_MINUTES = 12; // Catches :00 / :30 champs even if cron is slightly delayed
+const LOOKAHEAD_MINUTES = 28; // Widened to catch :00 / :30 champs despite GitHub cron delays
 const HISTORY_FILE = "./sent_history.json";
 const MAX_WEBHOOK_RETRIES = 2;
 const MAX_RETRY_DELAY_MS = 5000;
